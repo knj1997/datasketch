@@ -935,7 +935,7 @@ if redis is not None:
             self.config = config
             self._buffer_size = 50000
             redis_param = self._parse_config(self.config['redis'])
-            self._redis = redis.Redis(**redis_param)
+            self._redis = redis.RedisCluster(**redis_param)
             redis_buffer_param = self._parse_config(self.config.get('redis_buffer', {}))
             self._buffer = RedisBuffer(self._redis.connection_pool,
                                        self._redis.response_callbacks,
