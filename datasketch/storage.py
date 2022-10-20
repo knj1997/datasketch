@@ -872,20 +872,39 @@ if cassandra is not None:
 
 
 if redis is not None:
-    class RedisBuffer(redis.client.Pipeline):
-        '''A bufferized version of `redis.pipeline.Pipeline`.
+    class RedisBuffer(redis.cluster.ClusterPipeline):
+        """A bufferized version of `redis.pipeline.Pipeline`.
 
         The only difference from the conventional pipeline object is the
         ``_buffer_size``. Once the buffer is longer than the buffer size,
         the pipeline is automatically executed, and the buffer cleared.
-        '''
+        """
 
-        def __init__(self, connection_pool, response_callbacks, transaction, buffer_size,
-                     shard_hint=None):
+        def __init__(
+            self,
+            nodes_manager,
+            commands_parser,
+            startup_nodes,
+            result_callbacks,
+            cluster_response_callbacks,
+            cluster_error_retry_attempts,
+            read_from_replicas,
+            reinitialize_steps,
+            _lock,
+            buffer_size,
+        ):
             self._buffer_size = buffer_size
             super(RedisBuffer, self).__init__(
-                connection_pool, response_callbacks, transaction,
-                shard_hint=shard_hint)
+                nodes_manager=nodes_manager,
+                commands_parser=commands_parser,
+                startup_nodes=startup_nodes,
+                result_callbacks=result_callbacks,
+                cluster_response_callbacks=cluster_response_callbacks,
+                cluster_error_retry_attempts=cluster_error_retry_attempts,
+                read_from_replicas=read_from_replicas,
+                reinitialize_steps=reinitialize_steps,
+                lock=_lock,
+            )
 
         @property
         def buffer_size(self):
@@ -900,9 +919,8 @@ if redis is not None:
                 self.execute()
             super(RedisBuffer, self).execute_command(*args, **kwargs)
 
-
     class RedisStorage:
-        '''Base class for Redis-based storage containers.
+        """Base class for Redis-based storage containers.
 
         Args:
             config (dict): Redis storage units require a configuration
@@ -929,18 +947,26 @@ if redis is not None:
             name (bytes, optional): A prefix to namespace all keys in
                 the database pertaining to this storage container.
                 If None, a random name will be chosen.
-        '''
+        """
 
         def __init__(self, config, name=None):
             self.config = config
             self._buffer_size = 50000
-            redis_param = self._parse_config(self.config['redis'])
+            redis_param = self._parse_config(self.config["redis"])
             self._redis = redis.RedisCluster(**redis_param)
-            redis_buffer_param = self._parse_config(self.config.get('redis_buffer', {}))
-            self._buffer = RedisBuffer(self._redis.connection_pool,
-                                       self._redis.response_callbacks,
-                                       transaction=redis_buffer_param.get('transaction', True),
-                                       buffer_size=self._buffer_size)
+            redis_buffer_param = self._parse_config(self.config.get("redis_buffer", {}))
+            self._buffer = RedisBuffer(
+                self._redis.nodes_manager,
+                self._redis.commands_parser,
+                self._redis.nodes_manager.startup_nodes,
+                self._redis.result_callbacks,
+                self._redis.cluster_response_callbacks,
+                self._redis.cluster_error_retry_attempts,
+                self._redis.read_from_replicas,
+                self._redis.reinitialize_steps,
+                self._redis._lock,
+                buffer_size=self._buffer_size,
+            )
             if name is None:
                 name = _random_name(11)
             self._name = name
